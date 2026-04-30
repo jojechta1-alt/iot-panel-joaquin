@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel IoT Completo - Joaquin</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: #f0f2f5; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 1000px; width: 100%; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        
+        /* Sección Formulario */
+        .form-section { background: #f8fafc; padding: 20px; border-radius: 10px; margin-bottom: 30px; border: 1px solid #e2e8f0; }
+        .form-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; flex: 1; min-width: 150px; }
+        
+        /* Botones */
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.3s; }
+        .btn-post { background: #10b981; color: white; }
+        .btn-post:hover { background: #059669; }
+        .btn-get { background: #3b82f6; color: white; }
+
+        canvas { margin-top: 20px; max-height: 400px; }
+        #status { margin-top: 10px; font-weight: bold; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Dashboard IoT Ingeniería</h1>
+        
+        <div class="form-section">
+            <h3>Registrar Nueva Lectura (POST)</h3>
+            <div class="form-group">
+                <div>
+                    <label>ID Dispositivo</label><br>
+                    <input type="text" id="postDeviceId" placeholder="Ej: DEV-001">
+                </div>
+                <div>
+                    <label>Temperatura (°C)</label><br>
+                    <input type="number" id="postTemp" placeholder="Ej: 25.5">
+                </div>
+                <button class="btn-post" onclick="enviarDatos()">Enviar a AWS</button>
+            </div>
+            <div id="status"></div>
+        </div>
+
+        <div class="chart-section">
+            <h3>Historial de Temperaturas (GET)</h3>
+            <button class="btn-get" onclick="obtenerDatos()">🔄 Actualizar Gráfico</button>
+            <canvas id="iotChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURACIÓN: Pega aquí tus URLs de Lambda
+        const URL_GET = "https://cyg6365d27odhnityhe33h5ks40uogmz.lambda-url.us-east-2.on.aws/";
+        const URL_POST = "https://zpcechk4plmygctcdyvd2ycnyq0stwzq.lambda-url.us-east-2.on.aws/"; // Reemplaza esto
+
+        let myChart;
+
+        // --- FUNCIÓN POST ---
+        async function enviarDatos() {
+            const deviceId = document.getElementById('postDeviceId').value;
+            const temp = document.getElementById('postTemp').value;
+            const statusDiv = document.getElementById('status');
+
+            if (!deviceId || !temp) {
+                alert("Por favor completa ambos campos");
+                return;
+            }
+
+            const payload = {
+                deviceId: deviceId,
+                temperature: parseFloat(temp),
+                timestamp: new Date().toISOString()
+            };
+
+            statusDiv.innerText = "Enviando...";
+            statusDiv.style.color = "orange";
+
+            try {
+                const response = await fetch(URL_POST, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    statusDiv.innerText = "✅ ¡Enviado con éxito!";
+                    statusDiv.style.color = "green";
+                    // Limpiar formulario y actualizar gráfico
+                    document.getElementById('postTemp').value = "";
+                    obtenerDatos(); 
+                } else {
+                    throw new Error("Fallo en el servidor");
+                }
+            } catch (error) {
+                statusDiv.innerText = "❌ Error al enviar";
+                statusDiv.style.color = "red";
+                console.error(error);
+            }
+        }
+
+        // --- FUNCIÓN GET ---
+        async function obtenerDatos() {
+            try {
+                const res = await fetch(URL_GET);
+                const data = await res.json();
+                const lecturas = data.lecturas;
+
+                // Ordenar cronológicamente
+                lecturas.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                const labels = lecturas.map(l => new Date(l.timestamp).toLocaleTimeString());
+                const temps = lecturas.map(l => parseFloat(l.temperature));
+
+                renderChart(labels, temps);
+            } catch (error) {
+                console.error("Error obteniendo datos:", error);
+            }
+        }
+
+        function renderChart(labels, data) {
+            const ctx = document.getElementById('iotChart').getContext('2d');
+            if (myChart) myChart.destroy();
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Temperatura °C',
+                        data: data,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+
+        // Carga inicial al abrir la página
+        window.onload = obtenerDatos;
+    </script>
+</body>
+</html>
